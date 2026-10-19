@@ -56,12 +56,11 @@ export async function verifyPasswordLimited(password: string, stored: string): P
 }
 
 // Verified against when the email does not exist, so a wrong email and a
-// wrong password take the same time and cannot be told apart.
-let dummyHash: Promise<string> | undefined;
-export function dummyPasswordHash(): Promise<string> {
-  dummyHash ??= hashPassword(randomBytes(16).toString("hex"));
-  return dummyHash;
-}
+// wrong password take the same time and cannot be told apart. Precomputed
+// with the same parameters (its password was random and discarded), so the
+// first unknown-email login is not slower than later ones.
+export const DUMMY_PASSWORD_HASH =
+  "scrypt$32768$8$3$EyseFMG+JoqJ5zB3SUN3ZQ==$Z2dWAYj+mTa7ladvwu9L3XwiRXDosZgkZOw4sROOP5wiYQl6KbIDgkXQuyooLSlbUA1GLf9S2Y9SJnoNhf+/8w==";
 
 export function validateNewPassword(password: string): string | null {
   if (password.length < MIN_PASSWORD_LENGTH) return `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.`;

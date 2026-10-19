@@ -17,7 +17,9 @@ export function register() {
 
 // Every server-side render/action/route error becomes one structured log line,
 // which the CloudWatch metric filter "AppErrors" counts (infra/terraform).
-// errorFields() strips bound SQL parameters so secrets never reach the logs.
+// errorFields() strips bound SQL parameters from *this* line. Next.js also
+// prints the raw error afterwards, so queries that bind secrets must catch
+// and rethrow a sanitized error themselves (see changePasswordAction).
 export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
   console.error(
     JSON.stringify({

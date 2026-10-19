@@ -15,6 +15,7 @@ import { Client } from "pg";
 import { hashPassword, validateNewPassword } from "../src/lib/auth/password";
 import { poolConfigFromEnv } from "../src/lib/db/config";
 import { adminUsers, loginAttempts, sessions } from "../src/lib/db/schema";
+import { errorFields } from "../src/lib/logger";
 import { loadLocalEnv, log, requireEnv } from "./lib/env";
 
 async function main() {
@@ -60,6 +61,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({ level: "error", msg: "create-admin failed", err: String(err?.stack ?? err) }));
+  // errorFields drops bound SQL parameters (e.g. the new password hash).
+  console.error(JSON.stringify({ level: "error", msg: "create-admin failed", ...errorFields(err) }));
   process.exit(1);
 });

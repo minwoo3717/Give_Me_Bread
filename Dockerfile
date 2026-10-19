@@ -27,9 +27,11 @@ COPY . .
 # Git SHA of the commit being built: version-skew protection + /api/health.
 ARG NEXT_DEPLOYMENT_ID=dev
 ENV NEXT_DEPLOYMENT_ID=${NEXT_DEPLOYMENT_ID}
-# Optional build secret: a stable NEXT_SERVER_ACTIONS_ENCRYPTION_KEY keeps
-# Server Action IDs identical across builds, so an admin form loaded before a
-# deploy still submits after it. Passed as a BuildKit secret, never a layer.
+# Optional: a stable NEXT_SERVER_ACTIONS_ENCRYPTION_KEY keeps Server Action
+# IDs identical across builds, so an admin form loaded before a deploy still
+# submits after it. The BuildKit secret keeps it out of build logs and layer
+# metadata, but Next writes the key into .next (so it is in the image and the
+# GitHub Actions build cache). Treat it as a stable salt, not a secret.
 RUN --mount=type=secret,id=next_server_actions_key,required=false \
     mkdir -p public && \
     if [ -s /run/secrets/next_server_actions_key ]; then \

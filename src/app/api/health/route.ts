@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const checkDb = new URL(request.url).searchParams.get("db") === "1";
   const body: Record<string, unknown> = {
     status: "ok",
-    version: process.env.NEXT_DEPLOYMENT_ID ?? process.env.APP_VERSION ?? "dev",
+    version: process.env.NEXT_DEPLOYMENT_ID || process.env.APP_VERSION || "dev",
     uptimeSec: Math.round(process.uptime()),
   };
   let status = 200;

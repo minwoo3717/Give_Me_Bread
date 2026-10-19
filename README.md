@@ -17,7 +17,8 @@ Next.js 16 풀스택으로 만들었고, AWS(서울)에 운영 수준으로 배�
 
 ## 로컬 개발
 
-Docker 없이 바로 돌릴 수 있습니다.
+Docker 없이 바로 돌릴 수 있습니다. Windows PowerShell에서 `pnpm`이 "스크립트를 실행할 수 없으므로" 오류를 내면 `pnpm` 대신 `pnpm.cmd`를 쓰세요(예: `pnpm.cmd dev`).
+처음 실행할 때는 아래 순서를 모두 따라야 합니다. DB가 비어 있으면 홈 화면이 "잠시 문제가 생겼어요" 오류를 냅니다.
 
 ```bash
 pnpm install

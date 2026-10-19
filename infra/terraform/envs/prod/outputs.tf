@@ -20,8 +20,8 @@ output "cloudfront_distribution_id" {
 }
 
 output "admin_initial_password_command" {
-  description = "Prints the first admin password (change it after logging in)."
-  value       = "aws ssm get-parameter --region ${var.region} --with-decryption --name ${module.service.admin_password_parameter_name} --query Parameter.Value --output text"
+  description = "Prints the first admin password (change it after logging in). Uses the ARN: Git Bash would rewrite a /leading/slash name into a Windows path."
+  value       = "aws ssm get-parameter --region ${var.region} --with-decryption --name ${module.service.admin_password_parameter_arn} --query Parameter.Value --output text"
 }
 
 output "dashboard_url" {

@@ -48,6 +48,10 @@ output "admin_password_parameter_name" {
   value = aws_ssm_parameter.admin_initial_password.name
 }
 
+output "admin_password_parameter_arn" {
+  value = aws_ssm_parameter.admin_initial_password.arn
+}
+
 output "site_url" {
   value = local.site_url
 }

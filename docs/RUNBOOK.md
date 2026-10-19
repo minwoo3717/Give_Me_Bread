@@ -93,11 +93,16 @@ aws ecs update-service --region ap-northeast-2 --cluster oven-note-prod --servic
   --task-definition oven-note-prod-web:<이전 리비전>
 ```
 
-방법 1이나 2로 롤백했다면 마지막에 CDN 캐시를 비워, 문제 버전의 HTML이 남지 않게 합니다.
+방법 1이나 2로 롤백했다면 두 가지를 더 합니다.
 
-```bash
-aws cloudfront create-invalidation --distribution-id <id> --paths "/*"
-```
+1. 배포 이미지 기록을 되돌린 버전으로 바꿉니다. 이 값은 Terraform이 읽습니다. 바꾸지 않으면 다음 `terraform apply` 때 문제 버전으로 새 태스크 정의가 만들어집니다.
+   ```bash
+   aws ssm put-parameter --region ap-northeast-2 --name /oven-note/prod/deploy/image-tag --value <되돌린 git SHA> --type String --overwrite
+   ```
+2. CDN 캐시를 비워 문제 버전의 HTML이 남지 않게 합니다.
+   ```bash
+   aws cloudfront create-invalidation --distribution-id <id> --paths "/*"
+   ```
 
 방법 3 (정석): 문제 커밋을 `git revert`하고 push합니다. 그러면 CI를 거쳐 다시 배포됩니다.
 
@@ -127,7 +132,7 @@ aws ecs execute-command --cluster oven-note-prod --task "$TASK" --container web 
 ### 관리자 비밀번호를 잊었을 때 / 로그인이 잠겼을 때
 
 로그인 제한은 세 가지입니다. 같은 이메일+네트워크에서 15분에 5회, 한 네트워크에서 20회, 한 이메일 전체에 50회를 실패하면 막힙니다.
-IPv6는 /64 단위로 셉니다. 다른 네트워크(예: 휴대폰 데이터)에서는 보통 계속 로그인할 수 있습니다.
+IPv6는 /64 단위로 셉니다. 최근 30일 안에 로그인에 성공한 네트워크는 이메일 전체 한도에 걸리지 않으니, 평소 쓰던 곳(집, 휴대폰 데이터)에서는 보통 계속 로그인할 수 있습니다.
 
 1. 새 초기 비밀번호를 만듭니다: `terraform apply -replace=module.service.random_password.admin`
 2. **Ops task → reset-admin-password**를 실행합니다. 비밀번호가 바뀌고, 모든 세션과 로그인 잠금이 해제됩니다.
@@ -150,6 +155,8 @@ IPv6는 /64 단위로 셉니다. 다른 네트워크(예: 휴대폰 데이터)�
 | `db_instance_class`, `db_multi_az` | DB 크기와 이중화 |
 
 > 태스크 정의(환경 변수, CPU/메모리)를 바꾸는 apply 뒤에는 **Actions → Deploy를 한 번 실행**해야 실행 중인 태스크에 반영됩니다.
+>
+> 배포할 때마다 이미지 태그가 바뀌므로, 배포 후 `terraform plan`은 항상 태스크 정의 두 개를 교체(-/+)한다고 표시합니다. 정상이며, apply해도 같은 이미지로 새 리비전이 만들어질 뿐입니다.
 > 오토스케일링 범위처럼 서비스 설정만 바꾸는 경우는 apply만으로 바로 적용됩니다.
 
 큰 행사(예: 학교 공지 링크)처럼 트래픽이 몰릴 게 예상되면, 하루 전에 `web_min_tasks`를 4로 올려 두세요.

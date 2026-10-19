@@ -40,8 +40,18 @@ function stripPort(value: string): string {
  */
 export function rateLimitKey(ip: string): string {
   if (!ip.includes(":")) return ip;
+  // IPv4-mapped (::ffff:198.51.100.7, as dual-stack listeners report IPv4
+  // clients) is an IPv4 client: key it as one.
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (dotted) return dotted[1];
   const groups = expandIpv6(ip);
-  return groups ? `${groups.slice(0, 4).join(":")}::/64` : ip;
+  if (!groups) return ip;
+  if (groups.slice(0, 5).every((g) => g === "0") && groups[5] === "ffff" && groups.length === 8) {
+    const hi = Number.parseInt(groups[6], 16);
+    const lo = Number.parseInt(groups[7], 16);
+    if (Number.isFinite(hi) && Number.isFinite(lo)) return [hi >> 8, hi & 255, lo >> 8, lo & 255].join(".");
+  }
+  return `${groups.slice(0, 4).join(":")}::/64`;
 }
 
 function expandIpv6(ip: string): string[] | null {
@@ -50,8 +60,8 @@ function expandIpv6(ip: string): string[] | null {
   if (halves.length > 2) return null;
   const head = halves[0] ? halves[0].split(":") : [];
   const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-  // An embedded IPv4 tail (::ffff:1.2.3.4) is fine to leave unexpanded here:
-  // only the first four groups matter.
+  // Other embedded-IPv4 tails are left as-is: only the first four groups
+  // matter for the /64 key.
   const missing = 8 - head.length - tail.length;
   if (halves.length === 1 && head.length !== 8) return null;
   if (missing < 0) return null;

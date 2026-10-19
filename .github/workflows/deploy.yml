@@ -7,9 +7,10 @@ name: Deploy
 #   CloudFront -> smoke test.
 #
 # Only commits on this repository's master branch can reach the deploy job:
-# push events come from this repo only, and workflow_dispatch is refused for
-# any other ref. (Do not switch this to workflow_run: it also fires for fork
-# pull requests whose branch happens to be named "master".)
+# push events come from this repo only, and a workflow_dispatch from any other
+# ref fails immediately (refuse-other-refs). (Do not switch this to
+# workflow_run: it also fires for fork pull requests whose branch happens to be
+# named "master".)
 on:
   push:
     branches: [master]
@@ -20,8 +21,10 @@ on:
         type: boolean
         default: false
 
+# Only master runs queue for production. A dispatch from another branch gets
+# its own group, so it can never replace a pending master deploy.
 concurrency:
-  group: deploy-production
+  group: ${{ github.ref == 'refs/heads/master' && 'deploy-production' || format('deploy-ignored-{0}', github.run_id) }}
   cancel-in-progress: false
 
 permissions:
@@ -32,7 +35,16 @@ env:
   DEPLOY_CONFIG_PARAMETER: /oven-note/prod/deploy-config
 
 jobs:
+  refuse-other-refs:
+    if: github.ref != 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::Deploy only runs from master (this run is on ${{ github.ref }})"
+          exit 1
+
   ci:
+    if: github.ref == 'refs/heads/master'
     uses: ./.github/workflows/ci.yml
 
   deploy:

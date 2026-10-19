@@ -13,6 +13,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 import { poolConfigFromEnv } from "../src/lib/db/config";
 import { scramSha256Verifier } from "../src/lib/db/scram";
+import { errorFields } from "../src/lib/logger";
 import { loadLocalEnv, log } from "./lib/env";
 
 const ROLE_NAME_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -73,6 +74,7 @@ async function ensureAppRole(client: Client, user: string, password: string) {
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({ level: "error", msg: "migration failed", err: String(err?.stack ?? err) }));
+  // errorFields drops bound SQL parameters (e.g. the new password hash).
+  console.error(JSON.stringify({ level: "error", msg: "migration failed", ...errorFields(err) }));
   process.exit(1);
 });

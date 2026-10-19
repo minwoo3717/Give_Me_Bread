@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import {
-  dummyPasswordHash,
+  DUMMY_PASSWORD_HASH,
   hashPassword,
   validateNewPassword,
   verifyPassword,
@@ -67,7 +67,7 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
 
   // Always run one scrypt verification so response time does not reveal
   // whether the email exists.
-  const verdict = await verifyPasswordLimited(password, user?.passwordHash ?? (await dummyPasswordHash()));
+  const verdict = await verifyPasswordLimited(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
   if (verdict === "busy") {
     await releaseLoginAttempt(gate.attemptId);
     return { error: "로그인 요청이 몰리고 있습니다. 잠시 후 다시 시도하세요." };

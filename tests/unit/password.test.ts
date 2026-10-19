@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword, validateNewPassword, verifyPassword } from "@/lib/auth/password";
+import { DUMMY_PASSWORD_HASH, hashPassword, validateNewPassword, verifyPassword } from "@/lib/auth/password";
 
 describe("password hashing", () => {
   it("verifies the right password and rejects a wrong one", async () => {
@@ -24,6 +24,14 @@ describe("password hashing", () => {
     const decomposed = composed.normalize("NFD");
     const hash = await hashPassword(composed);
     expect(await verifyPassword(decomposed, hash)).toBe(true);
+  });
+});
+
+describe("DUMMY_PASSWORD_HASH", () => {
+  it("uses the same scrypt parameters as real hashes, so timing matches", async () => {
+    const real = await hashPassword("whatever-password-1");
+    expect(DUMMY_PASSWORD_HASH.split("$").slice(0, 4)).toEqual(real.split("$").slice(0, 4));
+    expect(await verifyPassword("anything", DUMMY_PASSWORD_HASH)).toBe(false);
   });
 });
 

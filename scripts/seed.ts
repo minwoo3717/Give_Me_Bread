@@ -8,6 +8,7 @@ import { seedRecipes } from "../src/content/recipes/financier";
 import { poolConfigFromEnv } from "../src/lib/db/config";
 import { recipes } from "../src/lib/db/schema";
 import { recipeInputSchema } from "../src/lib/recipe-schema";
+import { errorFields } from "../src/lib/logger";
 import { loadLocalEnv, log } from "./lib/env";
 
 async function main() {
@@ -31,6 +32,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({ level: "error", msg: "seed failed", err: String(err?.stack ?? err) }));
+  // errorFields drops bound SQL parameters (e.g. the new password hash).
+  console.error(JSON.stringify({ level: "error", msg: "seed failed", ...errorFields(err) }));
   process.exit(1);
 });

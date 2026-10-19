@@ -118,6 +118,8 @@ export const loginAttempts = pgTable(
   (t) => [
     index("login_attempts_ip_created_at_idx").on(t.ip, t.createdAt),
     index("login_attempts_email_created_at_idx").on(t.email, t.createdAt),
+    // Retention cleanup deletes by age on every completed login.
+    index("login_attempts_created_at_idx").on(t.createdAt),
   ],
 );
 

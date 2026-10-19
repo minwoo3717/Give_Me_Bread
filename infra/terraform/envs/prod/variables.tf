@@ -28,6 +28,11 @@ variable "github_repository_id" {
   description = "Numeric GitHub repository ID (`gh api repos/OWNER/REPO --jq .id`)."
   type        = string
   default     = null
+
+  validation {
+    condition     = (var.github_owner_id == null) == (var.github_repository_id == null)
+    error_message = "Set both github_owner_id and github_repository_id, or neither (one alone silently falls back to the unpinned OIDC subject)."
+  }
 }
 
 variable "alarm_email" {

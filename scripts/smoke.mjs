@@ -88,9 +88,9 @@ const checks = [
     name: "redirects are never CDN-cacheable (RSC request without _rsc -> 307 no-store)",
     run: async () => {
       const { res } = await get(`/?smoke=${Date.now()}`, { headers: { rsc: "1" } });
-      if (res.status >= 300 && res.status < 400) {
-        assert(isNoStore(res), `redirect carried Cache-Control "${res.headers.get("cache-control")}"`);
-      }
+      assert(res.status === 307, `expected 307 for an RSC request without _rsc, got ${res.status}`);
+      assert((res.headers.get("location") ?? "").includes("_rsc"), "307 does not point at an _rsc URL");
+      assert(isNoStore(res), `redirect carried Cache-Control "${res.headers.get("cache-control")}"`);
     },
   },
   {

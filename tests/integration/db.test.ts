@@ -79,12 +79,32 @@ describe.skipIf(!hasDb)("database integration", async () => {
     );
   });
 
-  it("lets at most 5 of 20 concurrent guesses through for one email+network", async () => {
+  it("lets exactly 5 of 20 concurrent guesses through for one email+network", async () => {
     const email = freshEmail();
     const gates = await Promise.all(
       Array.from({ length: 20 }, () => rateLimit.reserveLoginAttempt("198.51.100.7", email)),
     );
     expect(gates.filter((g) => g.allowed)).toHaveLength(rateLimit.MAX_FAILURES_PER_PAIR);
+    const rows = await getDb().select().from(loginAttempts).where(eq(loginAttempts.email, email));
+    expect(rows).toHaveLength(rateLimit.MAX_FAILURES_PER_PAIR);
+  });
+
+  it("keeps a network that logged in before usable when the per-email cap is reached", async () => {
+    const email = freshEmail();
+    const home = "192.0.2.77";
+    const ok = await rateLimit.reserveLoginAttempt(home, email);
+    expect(ok.allowed).toBe(true);
+    if (ok.allowed) await rateLimit.completeLoginAttempt(ok.attemptId, email, true);
+
+    // An attacker fills the per-email budget from 10 different networks.
+    const networks = Math.ceil(rateLimit.MAX_FAILURES_PER_EMAIL / rateLimit.MAX_FAILURES_PER_PAIR);
+    for (let n = 0; n < networks; n++) {
+      for (let i = 0; i < rateLimit.MAX_FAILURES_PER_PAIR; i++) {
+        await rateLimit.reserveLoginAttempt(`203.0.113.${n + 1}`, email);
+      }
+    }
+    expect((await rateLimit.reserveLoginAttempt("198.51.100.200", email)).allowed).toBe(false);
+    expect((await rateLimit.reserveLoginAttempt(home, email)).allowed).toBe(true);
   });
 
   it("does not let one attacker lock the account out for other networks", async () => {

@@ -37,6 +37,12 @@ describe("rateLimitKey", () => {
     expect(rateLimitKey("2001:db8:abcd:13::1")).not.toBe(a);
   });
 
+  it("keys IPv4-mapped IPv6 addresses as their IPv4 address", () => {
+    expect(rateLimitKey("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    expect(rateLimitKey("::FFFF:203.0.113.9")).toBe("203.0.113.9");
+    expect(rateLimitKey("::ffff:c633:6407")).toBe("198.51.100.7");
+  });
+
   it("handles leading :: and compressed forms", () => {
     expect(rateLimitKey("::1")).toBe("0:0:0:0::/64");
     expect(rateLimitKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");

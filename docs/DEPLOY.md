@@ -134,6 +134,7 @@ AWS 액세스 키는 어디에도 저장하지 않습니다. GitHub Actions가 O
 이 역할은 `production` 환경에서 도는 잡만 쓸 수 있습니다.
 
 (권장) 같은 화면의 **Environment secrets**에 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`를 추가합니다.
+이 키는 빌드 결과물(이미지와 GitHub Actions 빌드 캐시)에 들어가므로 비밀번호가 아니라 고정된 소금(salt) 정도로 생각하세요.
 값은 `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`로 만듭니다.
 이 키가 빌드마다 같으면, 배포 직전에 열어 둔 관리자 화면에서도 저장이 계속 됩니다.
 없으면 배포 직후 관리자 화면을 한 번 새로고침해야 할 수 있습니다.
