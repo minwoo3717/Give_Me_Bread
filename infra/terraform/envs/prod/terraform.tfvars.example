@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+github_repository = "minwoo3717/Give_Me_Bread"
+alarm_email       = "you@example.com"
+admin_email       = "you@example.com"
+
+# Numeric IDs used in GitHub OIDC tokens (repos created after 2026-07-15).
+# From https://api.github.com/repos/minwoo3717/Give_Me_Bread (owner.id, id).
+github_owner_id      = "68678017"
+github_repository_id = "1425838536"
+
+# Optional overrides
+# monthly_budget_usd  = 150
+# waf_page_rate_limit = 3000   # raise temporarily for k6 load tests
+# enable_waf         = true
+# web_min_tasks      = 2
+# web_max_tasks      = 6
+# cpu_architecture   = "ARM64"   # "X86_64" if your CI can't build arm64 images

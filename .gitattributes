@@ -1,0 +1,5 @@
+# Store and check out text files with LF everywhere (the CI scripts and the
+# Dockerfile run on Linux; Windows editors handle LF fine).
+* text=auto eol=lf
+*.ico binary
+*.png binary

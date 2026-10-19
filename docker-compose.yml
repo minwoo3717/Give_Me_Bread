@@ -1,0 +1,42 @@
+# Optional: production-like local stack (needs Docker Desktop).
+#   docker compose up -d db                 # just Postgres on :5433 (same URL as `pnpm db:dev`)
+#   docker compose --profile app up --build # Postgres + the production image on :3000
+#
+# The app container runs migrations + seed on start so it works out of the box.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bakery
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bakery"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        NEXT_DEPLOYMENT_ID: compose
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/bakery
+      SITE_URL: http://localhost:3000
+      # Plain http locally, so no __Host- cookie.
+      SESSION_COOKIE_SECURE: "false"
+    command: ["sh", "-c", "node scripts/migrate.cjs && node scripts/seed.cjs && node server-entry.cjs"]
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

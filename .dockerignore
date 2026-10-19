@@ -1,0 +1,19 @@
+# Never send local installs, build output or secrets to the Docker build.
+node_modules
+.next
+dist
+.local
+.env*
+!.env.example
+*.pem
+.git
+.github
+infra
+docs
+loadtest
+coverage
+*.tsbuildinfo
+next-env.d.ts
+Dockerfile
+docker-compose.yml
+README.md

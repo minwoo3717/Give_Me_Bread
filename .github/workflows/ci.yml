@@ -1,0 +1,110 @@
+name: CI
+
+# Pull requests run this directly; pushes to master run it through deploy.yml
+# (workflow_call) right before deploying.
+on:
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Lint, test, build, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bakery
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bakery"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/bakery
+      SITE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrate and seed the CI database
+        run: |
+          APP_DB_USER=app_user APP_DB_PASSWORD=app-password-ci pnpm db:migrate
+          pnpm db:seed
+
+      - name: Unit and integration tests
+        run: pnpm test
+
+      - name: Build
+        run: |
+          pnpm build
+          pnpm build:scripts
+
+      - name: Smoke test the production build
+        run: |
+          mkdir -p public
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          cp server-entry.cjs .next/standalone/
+          (cd .next/standalone && PORT=3000 SESSION_COOKIE_SECURE=false \
+            DATABASE_URL=postgres://app_user:app-password-ci@localhost:5432/bakery \
+            node server-entry.cjs > ../../server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/api/health && break; sleep 1; done
+          SMOKE_REQUIRE_RECIPE=1 node scripts/smoke.mjs http://127.0.0.1:3000
+
+      - name: Server log
+        if: always()
+        run: cat server.log || true
+
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.6
+
+      - name: fmt
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: validate
+        run: |
+          for dir in infra/terraform/bootstrap infra/terraform/envs/prod; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done

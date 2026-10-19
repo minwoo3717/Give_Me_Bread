@@ -1,0 +1,187 @@
+name: Deploy
+
+# Every push to master (the default branch): run CI, then
+#   build arm64 image -> push to ECR -> upload /_next/static to S3
+#   -> run DB migrations as a one-off ECS task -> rolling deploy of the web
+#   service (auto-rollback on failure) -> record the image tag -> purge
+#   CloudFront -> smoke test.
+#
+# Only commits on this repository's master branch can reach the deploy job:
+# push events come from this repo only, and workflow_dispatch is refused for
+# any other ref. (Do not switch this to workflow_run: it also fires for fork
+# pull requests whose branch happens to be named "master".)
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Also run the seed (first deploy: inserts the financier recipe if missing)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  DEPLOY_CONFIG_PARAMETER: /oven-note/prod/deploy-config
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    if: github.ref == 'refs/heads/master'
+    # Native arm64 runner to match Fargate ARM64 tasks. Without arm64 runners,
+    # set repo variables BUILD_RUNNER=ubuntu-latest and BUILD_PLATFORM=linux/amd64
+    # and cpu_architecture = "X86_64" in Terraform.
+    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04-arm' }}
+    environment:
+      name: production
+      url: ${{ steps.config.outputs.site_url }}
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Image tag
+        id: meta
+        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Load deploy config (written by Terraform)
+        id: config
+        run: |
+          aws ssm get-parameter --name "$DEPLOY_CONFIG_PARAMETER" --query Parameter.Value --output text > deploy-config.json
+          jq . deploy-config.json
+          ECR_URI=$(jq -r .ecrRepository deploy-config.json)
+          {
+            echo "ecr_repository=${ECR_URI}"
+            echo "ecr_repository_name=${ECR_URI#*/}"
+            echo "cluster=$(jq -r .cluster deploy-config.json)"
+            echo "web_service=$(jq -r .webService deploy-config.json)"
+            echo "ops_family=$(jq -r .opsTaskFamily deploy-config.json)"
+            echo "web_family=$(jq -r .webTaskFamily deploy-config.json)"
+            echo "static_bucket=$(jq -r .staticBucket deploy-config.json)"
+            echo "distribution_id=$(jq -r .distributionId deploy-config.json)"
+            echo "site_url=$(jq -r .siteUrl deploy-config.json)"
+            echo "image_tag_parameter=$(jq -r .imageTagParameter deploy-config.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      # Tags are immutable in ECR, so a re-run for the same commit reuses the
+      # image it already pushed instead of failing on the push.
+      - name: Check for an existing image
+        id: existing
+        run: |
+          if aws ecr describe-images --repository-name "${{ steps.config.outputs.ecr_repository_name }}" \
+               --image-ids imageTag="${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image ${{ steps.meta.outputs.tag }} already in ECR; skipping build"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.existing.outputs.exists != 'true'
+
+      - name: Build and push image
+        if: steps.existing.outputs.exists != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ vars.BUILD_PLATFORM || 'linux/arm64' }}
+          push: true
+          tags: ${{ steps.config.outputs.ecr_repository }}:${{ steps.meta.outputs.tag }}
+          build-args: |
+            NEXT_DEPLOYMENT_ID=${{ steps.meta.outputs.tag }}
+          # Optional stable Server Actions key (docs/DEPLOY.md); passed only when set.
+          secrets: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY != '' && format('next_server_actions_key={0}', secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      # Old asset versions stay in the bucket (no --delete), so clients still
+      # holding the previous HTML keep working during and after the rollout.
+      - name: Upload static assets to S3
+        run: |
+          IMAGE="${{ steps.config.outputs.ecr_repository }}:${{ steps.meta.outputs.tag }}"
+          docker pull --platform "${{ vars.BUILD_PLATFORM || 'linux/arm64' }}" "$IMAGE"
+          CID=$(docker create "$IMAGE")
+          docker cp "$CID:/app/.next/static" ./next-static
+          docker rm "$CID"
+          aws s3 sync ./next-static "s3://${{ steps.config.outputs.static_bucket }}/_next/static" \
+            --cache-control "public, max-age=31536000, immutable" --no-progress
+
+      - name: Point task definitions at the new image
+        run: |
+          IMAGE="${{ steps.config.outputs.ecr_repository }}:${{ steps.meta.outputs.tag }}"
+          aws ecs describe-task-definition --task-definition "${{ steps.config.outputs.web_family }}" --query taskDefinition > web-current.json
+          aws ecs describe-task-definition --task-definition "${{ steps.config.outputs.ops_family }}" --query taskDefinition > ops-current.json
+          # The ops task definition is registered here; the web one is
+          # registered by the deploy action below.
+          jq --arg img "$IMAGE" '
+            .containerDefinitions |= map(.image = $img)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' ops-current.json > ops-next.json
+          aws ecs register-task-definition --cli-input-json file://ops-next.json --query taskDefinition.taskDefinitionArn --output text
+
+      - name: Run database migrations
+        run: bash scripts/ci/run-ops-task.sh deploy-config.json scripts/migrate.cjs
+
+      - name: Seed (manual first deploy only)
+        if: github.event_name == 'workflow_dispatch' && inputs.seed
+        run: bash scripts/ci/run-ops-task.sh deploy-config.json scripts/seed.cjs
+
+      - name: Render web task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: web-current.json
+          container-name: web
+          image: ${{ steps.config.outputs.ecr_repository }}:${{ steps.meta.outputs.tag }}
+
+      - name: Deploy web service (rolling, auto-rollback)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ steps.config.outputs.cluster }}
+          service: ${{ steps.config.outputs.web_service }}
+          wait-for-service-stability: true
+          wait-for-minutes: 20
+
+      # Terraform reads this, so task definitions it registers later (env
+      # changes) keep using the image that is actually live.
+      - name: Record deployed image tag
+        run: |
+          aws ssm put-parameter --name "${{ steps.config.outputs.image_tag_parameter }}" \
+            --value "${{ steps.meta.outputs.tag }}" --type String --overwrite >/dev/null
+
+      - name: Purge CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.config.outputs.distribution_id }}" \
+            --paths "/*" --query Invalidation.Id --output text
+
+      - name: Smoke test production
+        run: |
+          # Give the invalidation a moment, then retry briefly.
+          for attempt in 1 2 3 4 5; do
+            if node scripts/smoke.mjs "${{ steps.config.outputs.site_url }}"; then exit 0; fi
+            echo "smoke attempt $attempt failed, retrying in 20s"; sleep 20
+          done
+          exit 1

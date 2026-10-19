@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* Warm "browned butter" palette. Every color is a token so dark mode only
+   swaps values, never class names. */
+:root {
+  --bg: #fbf7f0;
+  --surface: #ffffff;
+  --surface-2: #f4ece0;
+  --ink: #2b1d12;
+  --muted: #6e5a48;
+  --line: #e6d9c6;
+  --accent: #a85d22;
+  --accent-ink: #ffffff;
+  --accent-soft: #f6e3cf;
+  --gold: #d9a441;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --ok: #2f7a3e;
+  --ok-soft: #e6f4e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17120e;
+    --surface: #211912;
+    --surface-2: #2b2118;
+    --ink: #f3e9dc;
+    --muted: #c0ae99;
+    --line: #3b2e24;
+    --accent: #e39b5b;
+    --accent-ink: #1b120b;
+    --accent-soft: #3a2919;
+    --gold: #e6b75a;
+    --danger: #f97066;
+    --danger-soft: #3d1a17;
+    --ok: #6fcf7f;
+    --ok-soft: #173020;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-gold: var(--gold);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-gowun), "Nanum Myeongjo", "AppleMyungjo", serif;
+}
+
+html {
+  color-scheme: light dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

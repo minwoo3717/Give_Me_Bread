@@ -1,0 +1,59 @@
+name: Ops task
+
+# Manual one-off jobs against production, run as ECS tasks inside the VPC
+# (the database is not reachable from anywhere else). Needs no local AWS CLI.
+# Runs only from master, so code on other branches never gets the deploy role.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to run
+        type: choice
+        required: true
+        options:
+          - migrate
+          - seed
+          - create-admin
+          - reset-admin-password
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-northeast-2
+  DEPLOY_CONFIG_PARAMETER: /oven-note/prod/deploy-config
+
+jobs:
+  run:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Load deploy config
+        run: aws ssm get-parameter --name "$DEPLOY_CONFIG_PARAMETER" --query Parameter.Value --output text > deploy-config.json
+
+      - name: Run ${{ inputs.task }}
+        run: |
+          case "${{ inputs.task }}" in
+            migrate)              bash scripts/ci/run-ops-task.sh deploy-config.json scripts/migrate.cjs ;;
+            seed)                 bash scripts/ci/run-ops-task.sh deploy-config.json scripts/seed.cjs ;;
+            create-admin)         bash scripts/ci/run-ops-task.sh deploy-config.json scripts/create-admin.cjs ;;
+            reset-admin-password) bash scripts/ci/run-ops-task.sh deploy-config.json scripts/create-admin.cjs --reset ;;
+          esac
+
+      # New content must not wait out the 5-minute CDN cache (e.g. a 404
+      # cached for /recipes/financier before the seed ran).
+      - name: Purge CloudFront
+        if: inputs.task == 'seed'
+        run: |
+          aws cloudfront create-invalidation --distribution-id "$(jq -r .distributionId deploy-config.json)" \
+            --paths "/*" --query Invalidation.Id --output text
